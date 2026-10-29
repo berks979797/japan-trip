@@ -1,0 +1,8 @@
+{
+  "maps": [
+    { "title": "Tokyo subway (Tokyo Metro + Toei)", "file": "tokyo-metro.png" },
+    { "title": "Tokyo JR lines", "file": "tokyo-jr.png" },
+    { "title": "Osaka Metro", "file": "osaka-metro.png" },
+    { "title": "Kyoto & Kansai rail", "file": "kansai-rail.png" }
+  ]
+}
