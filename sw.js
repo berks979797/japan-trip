@@ -1,6 +1,6 @@
 // Offline support. App files: network first, cached copy when offline.
 // Fonts and the Firebase SDK: cached after the first visit.
-const CACHE = "japan-trip-v2";
+const CACHE = "japan-trip-v3";
 const SHELL = ["./", "index.html", "styles.css", "js/app.js", "js/store.js", "js/firebase-config.js",
   "manifest.webmanifest", "icons/icon-180.png", "icons/icon-192.png", "maps/maps.json"];
 const CDN = ["www.gstatic.com", "fonts.googleapis.com", "fonts.gstatic.com"];

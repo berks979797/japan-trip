@@ -496,13 +496,58 @@ function renderMaps() {
   }
   const v = S.mapsChecked ? `?v=${Math.floor(S.mapsChecked / 3600000)}` : "";
   const cards = S.maps.map((m) => `<article class="card mapcard">
-      <a class="imgwrap" href="maps/${encodeURIComponent(m.file)}" target="_blank" rel="noopener">
-        <img src="maps/${encodeURIComponent(m.file)}${v}" alt="${esc(m.title)}" loading="lazy" data-missing="${esc(m.file)}"></a>
-      <div class="cap"><b>${esc(m.title)}</b><span class="muted small">Tap to zoom</span></div></article>`).join("");
+      <button class="imgwrap" data-act="map-view" data-id="${esc(m.file)}" aria-label="Open ${esc(m.title)} full screen">
+        <img src="maps/${encodeURIComponent(m.file)}${v}" alt="${esc(m.title)}" loading="lazy" data-missing="${esc(m.file)}"></button>
+      <div class="cap"><b>${esc(m.title)}</b><span class="muted small">Tap to open</span></div></article>`).join("");
   return `<h2 class="section-title">Train maps</h2>
     ${cards || `<div class="card missing">${S.mapsLoading ? "Looking for maps…" : "No map images found. Upload PNG or JPG files to the <code>maps</code> folder in GitHub."}</div>`}
     <h3 class="sub-title">Official maps online</h3>
     <div class="links">${OFFICIAL_MAPS.map(([t, s, u]) => `<a class="card" href="${u}" target="_blank" rel="noopener"><b>${t}</b><span>${s}</span></a>`).join("")}</div>`;
+}
+
+
+/* ================================================================ map viewer */
+// Full-screen viewer inside the app (a plain link would leave the Home Screen app with no way back).
+function mapViewer(m) {
+  if (!m) return;
+  const el = document.createElement("div");
+  el.className = "viewer"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-label", m.title);
+  el.innerHTML = `<div class="viewer-bar"><b>${esc(m.title)}</b>
+      <button class="vbtn" data-z="-1" aria-label="Zoom out">−</button><button class="vbtn" data-z="1" aria-label="Zoom in">+</button>
+      <button class="vbtn close" aria-label="Close map">Close</button></div>
+    <div class="viewer-scroll"><img src="maps/${encodeURIComponent(m.file)}" alt="${esc(m.title)}"></div>`;
+  const sc = el.querySelector(".viewer-scroll"), img = el.querySelector("img");
+  let z = 1;
+  const setZoom = (nz, cx, cy) => {
+    nz = Math.min(6, Math.max(1, nz));
+    if (nz === z) return;
+    const r = sc.getBoundingClientRect();
+    cx ??= r.width / 2; cy ??= r.height / 2;
+    const fx = (sc.scrollLeft + cx) / sc.scrollWidth, fy = (sc.scrollTop + cy) / sc.scrollHeight;
+    z = nz; img.style.width = `${z * 100}%`;
+    sc.scrollLeft = fx * sc.scrollWidth - cx; sc.scrollTop = fy * sc.scrollHeight - cy;
+  };
+  const close = () => { el.remove(); document.body.style.overflow = ""; document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  el.querySelector(".close").addEventListener("click", close);
+  el.querySelectorAll("[data-z]").forEach((b) => b.addEventListener("click", () => setZoom(z * (b.dataset.z > 0 ? 1.6 : 1 / 1.6))));
+  let lastTap = 0;
+  img.addEventListener("click", (e) => {
+    const now = Date.now(); const r = sc.getBoundingClientRect();
+    if (now - lastTap < 350) setZoom(z > 1.5 ? 1 : 2.5, e.clientX - r.left, e.clientY - r.top);
+    lastTap = now;
+  });
+  // two-finger pinch
+  let pinch = null;
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  sc.addEventListener("touchstart", (e) => { if (e.touches.length === 2) { const r = sc.getBoundingClientRect();
+    pinch = { d: dist(e.touches), z, cx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, cy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top }; } }, { passive: true });
+  sc.addEventListener("touchmove", (e) => { if (pinch && e.touches.length === 2) { e.preventDefault(); setZoom(pinch.z * dist(e.touches) / pinch.d, pinch.cx, pinch.cy); } }, { passive: false });
+  sc.addEventListener("touchend", (e) => { if (e.touches.length < 2) pinch = null; });
+  document.addEventListener("keydown", onKey);
+  document.body.style.overflow = "hidden";
+  document.body.appendChild(el);
+  el.querySelector(".close").focus();
 }
 
 /* ================================================================ guide */
@@ -633,6 +678,7 @@ $app.addEventListener("click", (e) => {
     }
     case "driver": driverCard(S.data.places.find((x) => x.id === id)); break;
     case "refresh-rate": refreshRate(el); break;
+    case "map-view": mapViewer(S.maps.find((m) => m.file === id)); break;
   }
 });
 $app.addEventListener("keydown", (e) => {
