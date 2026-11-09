@@ -449,17 +449,58 @@ const OFFICIAL_MAPS = [
   ["Tokyo Metro (English)", "tokyometro.jp", "https://www.tokyometro.jp/lang_en/"],
   ["Osaka Metro (English)", "osakametro.co.jp", "https://subway.osakametro.co.jp/en/"],
 ];
-function renderMaps() {
-  if (S.maps == null) {
-    S.maps = [];
-    fetch("maps/maps.json", { cache: "no-cache" }).then((r) => r.json()).then((j) => { S.maps = j.maps || []; render(); }).catch(() => {});
+// Shows every image in the repo's maps/ folder (listed through GitHub's public API),
+// so file names don't have to match maps.json. maps.json only supplies nicer titles.
+// The last good list is kept on the phone for offline use.
+const IMG_RE = /\.(png|jpe?g|webp|gif)$/i;
+function repoInfo() {
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/i);
+  if (!m) return null;
+  const repo = location.pathname.split("/").filter(Boolean)[0];
+  return repo ? { owner: m[1], repo } : null;
+}
+function niceTitle(file) {
+  return file.replace(IMG_RE, "").replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+async function loadMaps() {
+  const stem = (f) => f.toLowerCase().replace(IMG_RE, "");
+  let titles = [];
+  try { titles = (await (await fetch("maps/maps.json", { cache: "no-store" })).json()).maps || []; } catch {}
+  const byStem = Object.fromEntries(titles.map((m) => [stem(m.file), m.title]));
+  let files = null;
+  const info = repoInfo();
+  if (info) {
+    try {
+      const r = await fetch(`https://api.github.com/repos/${info.owner}/${info.repo}/contents/maps?t=${Date.now()}`, { cache: "no-store" });
+      if (r.ok) files = (await r.json()).filter((f) => f.type === "file" && IMG_RE.test(f.name)).map((f) => f.name);
+    } catch {}
   }
+  let list;
+  if (files) {
+    const order = titles.map((m) => stem(m.file));
+    files.sort((a, b) => ((order.indexOf(stem(a)) + 1) || 99) - ((order.indexOf(stem(b)) + 1) || 99) || a.localeCompare(b));
+    list = files.map((f) => ({ file: f, title: byStem[stem(f)] || niceTitle(f) }));
+    lsSet("jt-maps", JSON.stringify(list));
+  } else {
+    try { list = JSON.parse(lsGet("jt-maps")); } catch {}
+    list ||= titles;
+  }
+  S.maps = list; S.mapsChecked = Date.now();
+  if (S.tab === "maps") render();
+}
+function renderMaps() {
+  if (S.maps == null || (!S.mapsLoading && Date.now() - (S.mapsChecked || 0) > 60000)) {
+    S.maps ||= (() => { try { return JSON.parse(lsGet("jt-maps")) || []; } catch { return []; } })();
+    S.mapsLoading = true;
+    loadMaps().finally(() => { S.mapsLoading = false; });
+  }
+  const v = S.mapsChecked ? `?v=${Math.floor(S.mapsChecked / 3600000)}` : "";
   const cards = S.maps.map((m) => `<article class="card mapcard">
       <a class="imgwrap" href="maps/${encodeURIComponent(m.file)}" target="_blank" rel="noopener">
-        <img src="maps/${encodeURIComponent(m.file)}" alt="${esc(m.title)}" loading="lazy" data-missing="${esc(m.file)}"></a>
+        <img src="maps/${encodeURIComponent(m.file)}${v}" alt="${esc(m.title)}" loading="lazy" data-missing="${esc(m.file)}"></a>
       <div class="cap"><b>${esc(m.title)}</b><span class="muted small">Tap to zoom</span></div></article>`).join("");
   return `<h2 class="section-title">Train maps</h2>
-    ${cards || `<div class="card missing">No map images listed yet. Add them to the <code>maps</code> folder and list them in <code>maps.json</code>.</div>`}
+    ${cards || `<div class="card missing">${S.mapsLoading ? "Looking for maps…" : "No map images found. Upload PNG or JPG files to the <code>maps</code> folder in GitHub."}</div>`}
     <h3 class="sub-title">Official maps online</h3>
     <div class="links">${OFFICIAL_MAPS.map(([t, s, u]) => `<a class="card" href="${u}" target="_blank" rel="noopener"><b>${t}</b><span>${s}</span></a>`).join("")}</div>`;
 }
